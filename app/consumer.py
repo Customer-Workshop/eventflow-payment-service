@@ -1,6 +1,5 @@
 """Azure Service Bus consumer for order events."""
 
-import asyncio
 import json
 import logging
 import threading
