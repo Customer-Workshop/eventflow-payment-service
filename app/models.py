@@ -1,7 +1,7 @@
 """Pydantic models for payment processing."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -53,5 +53,5 @@ class PaymentRecord(BaseModel):
     amount_minor: int = Field(description="Amount in smallest currency unit")
     amount_display: float = Field(description="Amount in display format")
     status: PaymentStatus = PaymentStatus.PENDING
-    processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    processed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     error_message: str | None = None

@@ -1,10 +1,10 @@
 """Azure Service Bus consumer for order events."""
 
-import asyncio
 import json
 import logging
 import threading
 
+import httpx
 from azure.servicebus import ServiceBusClient
 from azure.servicebus.exceptions import ServiceBusError
 
@@ -19,6 +19,26 @@ payments: dict[str, PaymentRecord] = {}
 
 _consumer_thread: threading.Thread | None = None
 _stop_event = threading.Event()
+
+
+def _update_order_status(order_id: str, status: str) -> None:
+    """Callback to order service to update order status after payment processing."""
+    if not settings.order_service_url:
+        logger.debug("ORDER_SERVICE_URL not set — skipping status callback")
+        return
+    url = f"{settings.order_service_url}/api/orders/{order_id}/status"
+    try:
+        response = httpx.patch(url, json={"status": status}, timeout=5.0)
+        if response.status_code == 200:
+            logger.info("Order %s status updated to %s", order_id, status)
+        else:
+            logger.warning(
+                "Failed to update order %s status: HTTP %d",
+                order_id,
+                response.status_code,
+            )
+    except Exception:
+        logger.warning("Could not reach order service to update order %s", order_id)
 
 
 def _process_message(message_body: str) -> None:
@@ -49,12 +69,20 @@ def _process_message(message_body: str) -> None:
             payment.status.value,
         )
 
+        # Callback to order service to update order status
+        _update_order_status(event.data.order_id, payment.status.value)
+
     except json.JSONDecodeError:
         logger.exception("Failed to parse message body as JSON")
     except ValueError:
         logger.exception(
             "Payment processing failed — validation error"
         )
+        # Try to update order status to failed before re-raising
+        try:
+            _update_order_status(event.data.order_id, "failed")
+        except Exception:
+            logger.warning("Could not update order status to failed")
         raise
     except Exception:
         logger.exception("Unexpected error processing message")
