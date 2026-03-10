@@ -58,7 +58,7 @@ def _process_message(message_body: str) -> None:
             event.data.amount,
         )
 
-        # Process the payment — this is where JPY orders will crash
+        # Process the payment
         payment = process_order_payment(event.data)
         payments[payment.payment_id] = payment
 
@@ -75,10 +75,8 @@ def _process_message(message_body: str) -> None:
     except json.JSONDecodeError:
         logger.exception("Failed to parse message body as JSON")
     except ValueError:
-        # This is the unhandled exception path for JPY orders
-        # The ValueError from validate_payment_amount propagates up uncaught
         logger.exception(
-            "Payment processing failed — unhandled validation error"
+            "Payment processing failed — validation error"
         )
         # Try to update order status to failed before re-raising
         try:
