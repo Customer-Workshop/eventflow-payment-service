@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Azure Monitor
     applicationinsights_connection_string: str = ""
 
+    # Order service callback
+    order_service_url: str = ""
+
     # Application
     log_level: str = "INFO"
     environment: str = "development"
