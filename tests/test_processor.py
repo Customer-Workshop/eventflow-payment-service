@@ -1,9 +1,4 @@
-"""Tests for the payment processor.
-
-NOTE: These tests only cover USD and EUR currencies.
-The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
-which is why it passes CI but fails in production.
-"""
+"""Tests for the payment processor."""
 
 from app.models import OrderEventData, PaymentStatus
 from app.processor import convert_to_display_amount, process_order_payment
@@ -23,6 +18,14 @@ class TestConvertToDisplayAmount:
     def test_convert_gbp_amount(self):
         """GBP amounts should be divided by 100 to get pounds."""
         assert convert_to_display_amount(5000, "GBP") == 50.00
+
+    def test_convert_jpy_amount(self):
+        """JPY amounts should not be divided (zero-decimal currency)."""
+        assert convert_to_display_amount(15800, "JPY") == 15800.0
+
+    def test_convert_krw_amount(self):
+        """KRW amounts should not be divided (zero-decimal currency)."""
+        assert convert_to_display_amount(50000, "KRW") == 50000.0
 
     def test_convert_zero_amount(self):
         """Zero amount should convert to zero."""
@@ -51,6 +54,16 @@ class TestProcessOrderPayment:
         assert payment.currency == "EUR"
         assert payment.amount_minor == 8999
         assert payment.amount_display == 89.99
+
+    def test_process_jpy_order(self, jpy_order_event_data: OrderEventData):
+        """JPY order should be processed successfully (zero-decimal currency)."""
+        payment = process_order_payment(jpy_order_event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.order_id == "order-jpy-001"
+        assert payment.currency == "JPY"
+        assert payment.amount_minor == 15800
+        assert payment.amount_display == 15800.0
 
     def test_process_large_usd_order(self):
         """Large USD orders should process without issues."""
