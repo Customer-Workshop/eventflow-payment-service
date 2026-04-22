@@ -81,6 +81,29 @@ poetry run pytest -v
 | `GET` | `/api/payments` | List processed payments |
 | `GET` | `/api/payments/{payment_id}` | Get payment by ID |
 
+## Test Coverage
+
+55 tests across 6 test files covering all application modules:
+
+| Test File | Module | Tests | Coverage |
+|---|---|---|---|
+| `test_processor.py` | `app/processor.py` | 21 | Currency conversion (USD/EUR/GBP/JPY/KRW), validation thresholds, gateway processing, full payment flow, gateway failure mock |
+| `test_consumer.py` | `app/consumer.py` | 7 | Message parsing (valid/invalid JSON, ValueError re-raise), order status callback (no URL, success, HTTP failure, non-200) |
+| `test_main.py` | `app/main.py` | 3 | Payment 404, list with limit param, descending sort order |
+| `test_models.py` | `app/models.py` | 8 | PaymentStatus enum values, PaymentRecord defaults, OrderCreatedEvent deserialization, OrderEventData field access |
+| `test_config.py` | `app/config.py` | 8 | Default values for all Settings fields |
+| `test_processor.py` | Health endpoints | 3 | Health check, readiness (no Service Bus), empty payments list |
+
+**Known bug tests:** Several tests in `test_processor.py` document the intentional JPY/KRW zero-decimal currency bug. These tests assert the *incorrect* behavior (e.g., `convert_to_display_amount(15800, "JPY") == 158.0`) and will intentionally break when the bug is fixed.
+
+```bash
+# Run tests
+poetry run pytest -v --tb=short
+
+# Lint
+poetry run ruff check app/ tests/
+```
+
 ## Docker
 
 ```bash
