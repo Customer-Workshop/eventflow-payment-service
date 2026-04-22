@@ -5,8 +5,17 @@ The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
 which is why it passes CI but fails in production.
 """
 
+from unittest.mock import patch
+
+import pytest
+
 from app.models import OrderEventData, PaymentStatus
-from app.processor import convert_to_display_amount, process_order_payment
+from app.processor import (
+    GatewayResponse,
+    convert_to_display_amount,
+    process_order_payment,
+    validate_payment_amount,
+)
 
 
 class TestConvertToDisplayAmount:
@@ -89,3 +98,49 @@ class TestHealthEndpoints:
         response = client.get("/api/payments")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+
+
+class TestValidatePaymentAmount:
+    """Tests for validate_payment_amount."""
+
+    def test_below_threshold_raises_value_error(self):
+        """Raises ValueError when amount is below the minimum threshold."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(0.10, "USD")
+
+    def test_below_threshold_jpy(self):
+        """Raises ValueError for JPY amount below 500 threshold."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(100.0, "JPY")
+
+
+class TestProcessOrderPaymentFailedGateway:
+    """Tests for process_order_payment when the gateway returns failure."""
+
+    def test_failed_gateway_response(self):
+        """Returns a FAILED PaymentRecord when gateway_response.success is False."""
+        event_data = OrderEventData(
+            order_id="order-fail-001",
+            customer_id="cust-fail",
+            currency="USD",
+            amount=5000,
+            items=[
+                {"product_id": "p1", "name": "Item", "quantity": 1, "unit_price": 5000}
+            ],
+        )
+
+        failed_response = GatewayResponse(
+            success=False,
+            transaction_id=None,
+            error="Insufficient funds",
+        )
+
+        with patch(
+            "app.processor.process_payment_through_gateway",
+            return_value=failed_response,
+        ):
+            payment = process_order_payment(event_data)
+
+        assert payment.status == PaymentStatus.FAILED
+        assert payment.error_message == "Insufficient funds"
+        assert payment.order_id == "order-fail-001"
