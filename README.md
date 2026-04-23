@@ -81,6 +81,25 @@ poetry run pytest -v
 | `GET` | `/api/payments` | List processed payments |
 | `GET` | `/api/payments/{payment_id}` | Get payment by ID |
 
+## Test Coverage
+
+**45 tests** across 4 test files. Run with coverage:
+
+```bash
+poetry run pytest --cov=app --cov-report=term-missing -v
+```
+
+| Module | Statements | Covered | Coverage |
+|---|---|---|---|
+| `app/config.py` | 12 | 12 | 100% |
+| `app/models.py` | 34 | 34 | 100% |
+| `app/processor.py` | 30 | 28 | 93% |
+| `app/main.py` | 39 | 34 | 87% |
+| `app/consumer.py` | 101 | 55 | 54% |
+| **Total** | **216** | **163** | **75%** |
+
+`consumer.py` has lower coverage because `_consumer_loop()` and `check_servicebus_health()` require a live Azure Service Bus connection. All testable logic paths (message processing, HTTP callbacks, lifecycle management) are covered.
+
 ## Docker
 
 ```bash
