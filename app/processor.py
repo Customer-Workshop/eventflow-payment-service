@@ -17,12 +17,13 @@ When a JPY order with amount=15800 arrives:
     (500 JPY), causing a validation error that is not caught → unhandled exception
 """
 
-import logging
 from dataclasses import dataclass
+
+import structlog
 
 from app.models import OrderEventData, PaymentRecord, PaymentStatus
 
-logger = logging.getLogger(__name__)
+logger = structlog.stdlib.get_logger(__name__)
 
 # Minimum transaction thresholds in display currency units
 # These represent the minimum billable amount for each currency
@@ -127,10 +128,11 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
         A PaymentRecord with the processing result.
     """
     logger.info(
-        "Processing payment for order %s: %s %d",
-        event_data.order_id,
-        event_data.currency,
-        event_data.amount,
+        "payment_processing_started",
+        order_id=event_data.order_id,
+        currency=event_data.currency,
+        amount_minor=event_data.amount,
+        customer_id=event_data.customer_id,
     )
 
     # Convert from minor units to display amount
@@ -138,10 +140,11 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
     display_amount = convert_to_display_amount(event_data.amount, event_data.currency)
 
     logger.info(
-        "Converted amount: %s %s (minor: %d)",
-        display_amount,
-        event_data.currency,
-        event_data.amount,
+        "currency_conversion_completed",
+        order_id=event_data.order_id,
+        currency=event_data.currency,
+        amount_minor=event_data.amount,
+        amount_display=display_amount,
     )
 
     # Process through the payment gateway
@@ -154,9 +157,13 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
 
     if gateway_response.success:
         logger.info(
-            "Payment completed for order %s (txn: %s)",
-            event_data.order_id,
-            gateway_response.transaction_id,
+            "payment_completed",
+            order_id=event_data.order_id,
+            currency=event_data.currency,
+            amount_minor=event_data.amount,
+            amount_display=display_amount,
+            payment_status="completed",
+            transaction_id=gateway_response.transaction_id,
         )
         return PaymentRecord(
             order_id=event_data.order_id,
@@ -168,9 +175,13 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
         )
 
     logger.error(
-        "Payment failed for order %s: %s",
-        event_data.order_id,
-        gateway_response.error,
+        "payment_failed",
+        order_id=event_data.order_id,
+        currency=event_data.currency,
+        amount_minor=event_data.amount,
+        amount_display=display_amount,
+        payment_status="failed",
+        error=gateway_response.error,
     )
     return PaymentRecord(
         order_id=event_data.order_id,

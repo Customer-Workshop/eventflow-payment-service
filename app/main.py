@@ -1,9 +1,9 @@
 """EventFlow Payment Service — FastAPI application entry point."""
 
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,28 +14,35 @@ from app.consumer import (
     start_consumer,
     stop_consumer,
 )
+from app.error_handlers import register_error_handlers
+from app.logging_config import configure_logging
+from app.metrics import router as metrics_router
+from app.middleware import RequestLoggingMiddleware
 from app.models import PaymentRecord
 
-# Configure structured logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Initialise structured logging before anything else
+configure_logging()
+
+logger = structlog.stdlib.get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Manage application startup and shutdown."""
     logger.info(
-        "Starting %s v%s (env=%s)",
-        settings.service_name,
-        settings.service_version,
-        settings.environment,
+        "service_starting",
+        service_name=settings.service_name,
+        service_version=settings.service_version,
+        environment=settings.environment,
+        log_format=settings.log_format,
+        metrics_enabled=settings.metrics_enabled,
     )
     start_consumer()
     yield
-    logger.info("Shutting down %s", settings.service_name)
+    logger.info(
+        "service_shutting_down",
+        service_name=settings.service_name,
+    )
     stop_consumer()
 
 
@@ -46,6 +53,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# --- Middleware (order matters: first added = outermost) ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,6 +61,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
+
+# --- Error handlers ---
+register_error_handlers(app)
+
+# --- Routers ---
+app.include_router(metrics_router)
 
 
 @app.get("/health", tags=["health"])

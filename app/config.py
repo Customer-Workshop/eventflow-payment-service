@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     service_name: str = "eventflow-payment-service"
     service_version: str = "1.0.0"
 
+    # Logging & observability
+    log_format: str = "json"
+    log_output: str = "stdout"
+    metrics_enabled: bool = True
+    slow_request_threshold_ms: int = 1000
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
