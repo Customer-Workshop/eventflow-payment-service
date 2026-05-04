@@ -1,5 +1,7 @@
 """Shared test fixtures for the Payment Service."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -54,4 +56,56 @@ def eur_order_event_data() -> OrderEventData:
                 "unit_price": 8999,
             },
         ],
+    )
+
+
+@pytest.fixture
+def sample_order_event_json() -> str:
+    """A valid OrderCreated event as a JSON string."""
+    return json.dumps(
+        {
+            "event_id": "evt-test-001",
+            "event_type": "OrderCreated",
+            "timestamp": "2025-01-15T10:30:00Z",
+            "data": {
+                "order_id": "order-test-001",
+                "customer_id": "cust-test-001",
+                "currency": "USD",
+                "amount": 5000,
+                "items": [
+                    {
+                        "product_id": "prod-001",
+                        "name": "Test Item",
+                        "quantity": 1,
+                        "unit_price": 5000,
+                    }
+                ],
+            },
+        }
+    )
+
+
+@pytest.fixture
+def jpy_order_event_json() -> str:
+    """A JPY OrderCreated event that triggers the intentional bug."""
+    return json.dumps(
+        {
+            "event_id": "evt-jpy-001",
+            "event_type": "OrderCreated",
+            "timestamp": "2025-01-15T10:30:00Z",
+            "data": {
+                "order_id": "order-jpy-001",
+                "customer_id": "cust-jp-001",
+                "currency": "JPY",
+                "amount": 15800,
+                "items": [
+                    {
+                        "product_id": "prod-jp-001",
+                        "name": "Japanese Item",
+                        "quantity": 1,
+                        "unit_price": 15800,
+                    }
+                ],
+            },
+        }
     )
