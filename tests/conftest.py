@@ -55,3 +55,28 @@ def eur_order_event_data() -> OrderEventData:
             },
         ],
     )
+
+
+@pytest.fixture
+def jpy_order_event_data() -> OrderEventData:
+    """An OrderCreated event payload for a JPY (zero-decimal) order."""
+    return OrderEventData(
+        order_id="order-jpy-001",
+        customer_id="cust-005",
+        currency="JPY",
+        amount=15800,
+        items=[
+            {
+                "product_id": "prod-501",
+                "name": "Mechanical Keyboard",
+                "quantity": 1,
+                "unit_price": 8900,
+            },
+            {
+                "product_id": "prod-502",
+                "name": "Wrist Rest",
+                "quantity": 1,
+                "unit_price": 6900,
+            },
+        ],
+    )

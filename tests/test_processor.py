@@ -1,9 +1,4 @@
-"""Tests for the payment processor.
-
-NOTE: These tests only cover USD and EUR currencies.
-The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
-which is why it passes CI but fails in production.
-"""
+"""Tests for the payment processor."""
 
 from app.models import OrderEventData, PaymentStatus
 from app.processor import convert_to_display_amount, process_order_payment
@@ -28,6 +23,22 @@ class TestConvertToDisplayAmount:
         """Zero amount should convert to zero."""
         assert convert_to_display_amount(0, "USD") == 0.0
 
+    def test_convert_jpy_amount(self):
+        """JPY is a zero-decimal currency — no division should occur."""
+        assert convert_to_display_amount(15800, "JPY") == 15800.0
+
+    def test_convert_krw_amount(self):
+        """KRW is a zero-decimal currency — no division should occur."""
+        assert convert_to_display_amount(50000, "KRW") == 50000.0
+
+    def test_convert_bhd_amount(self):
+        """BHD is a three-decimal currency — divide by 1000."""
+        assert convert_to_display_amount(5250, "BHD") == 5.25
+
+    def test_convert_unknown_currency_defaults_to_exponent_2(self):
+        """Unknown currencies should default to exponent 2 (divide by 100)."""
+        assert convert_to_display_amount(1500, "XYZ") == 15.0
+
 
 class TestProcessOrderPayment:
     """Tests for end-to-end payment processing."""
@@ -51,6 +62,16 @@ class TestProcessOrderPayment:
         assert payment.currency == "EUR"
         assert payment.amount_minor == 8999
         assert payment.amount_display == 89.99
+
+    def test_process_jpy_order(self, jpy_order_event_data: OrderEventData):
+        """JPY order should be processed successfully with zero-decimal handling."""
+        payment = process_order_payment(jpy_order_event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.order_id == "order-jpy-001"
+        assert payment.currency == "JPY"
+        assert payment.amount_minor == 15800
+        assert payment.amount_display == 15800.0
 
     def test_process_large_usd_order(self):
         """Large USD orders should process without issues."""
