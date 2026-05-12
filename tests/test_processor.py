@@ -1,12 +1,13 @@
-"""Tests for the payment processor.
+"""Tests for the payment processor."""
 
-NOTE: These tests only cover USD and EUR currencies.
-The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
-which is why it passes CI but fails in production.
-"""
+import pytest
 
 from app.models import OrderEventData, PaymentStatus
-from app.processor import convert_to_display_amount, process_order_payment
+from app.processor import (
+    convert_to_display_amount,
+    process_order_payment,
+    validate_payment_amount,
+)
 
 
 class TestConvertToDisplayAmount:
@@ -24,9 +25,29 @@ class TestConvertToDisplayAmount:
         """GBP amounts should be divided by 100 to get pounds."""
         assert convert_to_display_amount(5000, "GBP") == 50.00
 
+    def test_convert_jpy_amount(self):
+        """JPY is zero-decimal: amount is already in base units."""
+        assert convert_to_display_amount(15800, "JPY") == 15800.0
+
+    def test_convert_krw_amount(self):
+        """KRW is zero-decimal: amount is already in base units."""
+        assert convert_to_display_amount(125000, "KRW") == 125000.0
+
+    def test_convert_jpy_small_amount(self):
+        """JPY small amount should not be divided."""
+        assert convert_to_display_amount(500, "JPY") == 500.0
+
     def test_convert_zero_amount(self):
         """Zero amount should convert to zero."""
         assert convert_to_display_amount(0, "USD") == 0.0
+
+    def test_convert_zero_amount_jpy(self):
+        """Zero JPY amount should convert to zero."""
+        assert convert_to_display_amount(0, "JPY") == 0.0
+
+    def test_currency_code_case_insensitive(self):
+        """Currency code matching should be case-insensitive."""
+        assert convert_to_display_amount(15800, "jpy") == 15800.0
 
 
 class TestProcessOrderPayment:
@@ -52,6 +73,26 @@ class TestProcessOrderPayment:
         assert payment.amount_minor == 8999
         assert payment.amount_display == 89.99
 
+    def test_process_jpy_order(self, jpy_order_event_data: OrderEventData):
+        """JPY order should be processed with the correct display amount."""
+        payment = process_order_payment(jpy_order_event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.order_id == "order-jpy-001"
+        assert payment.currency == "JPY"
+        assert payment.amount_minor == 15800
+        assert payment.amount_display == 15800.0
+
+    def test_process_krw_order(self, krw_order_event_data: OrderEventData):
+        """KRW order should be processed with the correct display amount."""
+        payment = process_order_payment(krw_order_event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.order_id == "order-krw-001"
+        assert payment.currency == "KRW"
+        assert payment.amount_minor == 125000
+        assert payment.amount_display == 125000.0
+
     def test_process_large_usd_order(self):
         """Large USD orders should process without issues."""
         event_data = OrderEventData(
@@ -67,6 +108,38 @@ class TestProcessOrderPayment:
 
         assert payment.status == PaymentStatus.COMPLETED
         assert payment.amount_display == 9999.99
+
+    def test_jpy_below_threshold_fails(self):
+        """JPY amount below 500 threshold should raise ValueError."""
+        event_data = OrderEventData(
+            order_id="order-jpy-low",
+            customer_id="cust-low",
+            currency="JPY",
+            amount=100,
+            items=[
+                {"product_id": "p1", "name": "Sticker", "quantity": 1, "unit_price": 100}
+            ],
+        )
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_order_payment(event_data)
+
+
+class TestValidatePaymentAmount:
+    """Tests for minimum threshold validation."""
+
+    def test_usd_above_threshold(self):
+        validate_payment_amount(1.00, "USD")
+
+    def test_usd_below_threshold(self):
+        with pytest.raises(ValueError):
+            validate_payment_amount(0.10, "USD")
+
+    def test_jpy_above_threshold(self):
+        validate_payment_amount(600.0, "JPY")
+
+    def test_jpy_below_threshold(self):
+        with pytest.raises(ValueError):
+            validate_payment_amount(100.0, "JPY")
 
 
 class TestHealthEndpoints:

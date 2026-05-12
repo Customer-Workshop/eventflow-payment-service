@@ -2,25 +2,15 @@
 
 This module converts order amounts from minor units (cents/smallest denomination)
 to display amounts and validates the payment.
-
-BUG: The conversion assumes ALL currencies have 2 decimal places.
-This works for USD, EUR, GBP but FAILS for zero-decimal currencies
-like JPY and KRW where the amount is already in the base unit.
-
-When a JPY order with amount=15800 arrives:
-  - display_amount = 15800 / 100 = 158.00  (WRONG — should be 15800)
-  - The consistency check compares display_amount * 100 back to the original
-  - 158.00 * 100 = 15800 — this actually passes for amounts divisible by 100
-  - BUT for amount=15850: 15850 / 100 = 158.50, 158.50 * 100 = 15850 — also passes
-  - The REAL failure: the gateway validates display_amount against known price ranges
-    for the currency, and 158.00 JPY is below the minimum transaction threshold
-    (500 JPY), causing a validation error that is not caught → unhandled exception
 """
 
 import logging
 from dataclasses import dataclass
 
 from app.models import OrderEventData, PaymentRecord, PaymentStatus
+
+# Currencies where the smallest unit is the base unit (no decimal subdivision).
+ZERO_DECIMAL_CURRENCIES: set[str] = {"JPY", "KRW"}
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +47,10 @@ def convert_to_display_amount(amount_minor: int, currency: str) -> float:
         currency: ISO 4217 currency code.
 
     Returns:
-        The amount in display format (e.g., dollars).
-
-    BUG: Always divides by 100, which is incorrect for zero-decimal
-    currencies like JPY where 1 yen IS the smallest unit.
-    The correct implementation would check the currency's decimal places.
+        The amount in display format (e.g., dollars for USD, yen for JPY).
     """
-    # BUG: This assumes all currencies have 2 decimal places
+    if currency.upper() in ZERO_DECIMAL_CURRENCIES:
+        return float(amount_minor)
     return amount_minor / 100
 
 
@@ -102,8 +89,6 @@ def process_payment_through_gateway(
     Returns:
         A GatewayResponse indicating success or failure.
     """
-    # Validate minimum amount — this is where the JPY bug manifests
-    # JPY 15800 → display_amount = 158.00 → below 500 JPY threshold → CRASH
     validate_payment_amount(display_amount, currency)
 
     # Simulate successful gateway response
@@ -134,7 +119,6 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
     )
 
     # Convert from minor units to display amount
-    # BUG: For JPY, this divides by 100 when it shouldn't
     display_amount = convert_to_display_amount(event_data.amount, event_data.currency)
 
     logger.info(
