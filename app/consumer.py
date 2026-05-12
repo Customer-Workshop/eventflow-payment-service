@@ -58,7 +58,7 @@ def _process_message(message_body: str) -> None:
             event.data.amount,
         )
 
-        # Process the payment — this is where JPY orders will crash
+        # Process the payment
         payment = process_order_payment(event.data)
         payments[payment.payment_id] = payment
 
