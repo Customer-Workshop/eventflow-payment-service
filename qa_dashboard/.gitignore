@@ -1,0 +1,4 @@
+# Generated artifacts — regenerate with: poetry run python -m qa_dashboard
+dashboard.html
+test_results.json
+coverage.json
