@@ -38,8 +38,8 @@ class TestConvertToDisplayAmount:
         assert convert_to_display_amount(15800, "JPY") == 158.0
 
     def test_convert_krw_amount(self):
-        """KRW amounts are incorrectly divided by 100 due to the zero-decimal bug."""
-        assert convert_to_display_amount(50000, "KRW") == 500.0
+        """KRW 49900 is divided by 100 to 499.0, which falls below the 500 KRW threshold."""
+        assert convert_to_display_amount(49900, "KRW") == 499.0
 
 
 class TestProcessOrderPayment:
@@ -161,8 +161,13 @@ class TestProcessPaymentThroughGateway:
             process_payment_through_gateway(158.00, "JPY", "order-jpy-001")
 
 
-class TestProcessOrderPaymentFailurePath:
-    """Tests for payment processing failure scenarios."""
+class TestProcessOrderPaymentZeroDecimalBug:
+    """Tests demonstrating the zero-decimal currency conversion bug.
+
+    The ValueError raised inside the gateway propagates uncaught through
+    process_order_payment — it never reaches the success/failure branch
+    on lines 155-175.
+    """
 
     def test_jpy_order_raises_due_to_conversion_bug(self):
         """JPY order triggers ValueError because the buggy conversion produces
@@ -178,6 +183,25 @@ class TestProcessOrderPaymentFailurePath:
         )
         with pytest.raises(ValueError, match="below minimum threshold"):
             process_order_payment(event_data)
+
+    def test_krw_order_raises_due_to_conversion_bug(self):
+        """KRW order triggers ValueError because 49900 / 100 = 499.0,
+        which is below the 500 KRW threshold."""
+        event_data = OrderEventData(
+            order_id="order-krw-001",
+            customer_id="cust-krw",
+            currency="KRW",
+            amount=49900,
+            items=[
+                {"product_id": "p1", "name": "Korean Snack", "quantity": 1, "unit_price": 49900}
+            ],
+        )
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_order_payment(event_data)
+
+
+class TestProcessOrderPaymentGatewayFailure:
+    """Tests for the gateway failure return path (lines 170-175)."""
 
     def test_gateway_failure_returns_failed_record(self):
         """When the gateway returns success=False, the payment record should be FAILED."""
