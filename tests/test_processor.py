@@ -1,12 +1,17 @@
-"""Tests for the payment processor.
+"""Tests for the payment processor."""
 
-NOTE: These tests only cover USD and EUR currencies.
-The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
-which is why it passes CI but fails in production.
-"""
+from unittest.mock import patch
+
+import pytest
 
 from app.models import OrderEventData, PaymentStatus
-from app.processor import convert_to_display_amount, process_order_payment
+from app.processor import (
+    GatewayResponse,
+    convert_to_display_amount,
+    process_order_payment,
+    process_payment_through_gateway,
+    validate_payment_amount,
+)
 
 
 class TestConvertToDisplayAmount:
@@ -27,6 +32,14 @@ class TestConvertToDisplayAmount:
     def test_convert_zero_amount(self):
         """Zero amount should convert to zero."""
         assert convert_to_display_amount(0, "USD") == 0.0
+
+    def test_convert_jpy_amount(self):
+        """JPY amounts are incorrectly divided by 100 due to the zero-decimal bug."""
+        assert convert_to_display_amount(15800, "JPY") == 158.0
+
+    def test_convert_krw_amount(self):
+        """KRW amounts are incorrectly divided by 100 due to the zero-decimal bug."""
+        assert convert_to_display_amount(50000, "KRW") == 500.0
 
 
 class TestProcessOrderPayment:
@@ -89,3 +102,105 @@ class TestHealthEndpoints:
         response = client.get("/api/payments")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+
+
+class TestValidatePaymentAmount:
+    """Tests for payment amount threshold validation."""
+
+    def test_valid_usd_amount(self):
+        """USD amount above threshold should not raise."""
+        validate_payment_amount(10.00, "USD")
+
+    def test_valid_eur_amount(self):
+        """EUR amount at exactly the threshold should not raise."""
+        validate_payment_amount(0.50, "EUR")
+
+    def test_below_threshold_raises(self):
+        """Amount below the currency threshold should raise ValueError."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(0.10, "USD")
+
+    def test_below_threshold_gbp(self):
+        """GBP amount below 0.30 threshold should raise ValueError."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(0.20, "GBP")
+
+    def test_unknown_currency_uses_default_threshold(self):
+        """Unknown currency should fall back to 0.50 default threshold."""
+        validate_payment_amount(1.00, "XYZ")
+
+    def test_unknown_currency_below_default_raises(self):
+        """Unknown currency below the default 0.50 threshold should raise."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(0.10, "XYZ")
+
+    def test_jpy_below_threshold_due_to_bug(self):
+        """JPY 158.00 (bug-converted from 15800) is below the 500 JPY threshold."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            validate_payment_amount(158.00, "JPY")
+
+
+class TestProcessPaymentThroughGateway:
+    """Tests for the simulated payment gateway."""
+
+    def test_successful_gateway_response(self):
+        """Valid amount should produce a successful gateway response."""
+        response = process_payment_through_gateway(50.00, "USD", "order-001")
+        assert response.success is True
+        assert response.transaction_id is not None
+        assert response.transaction_id.startswith("txn-")
+
+    def test_gateway_rejects_below_threshold(self):
+        """Amount below the minimum threshold should raise ValueError."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_payment_through_gateway(0.10, "USD", "order-002")
+
+    def test_jpy_order_fails_gateway_due_to_bug(self):
+        """JPY display_amount of 158.00 (from the conversion bug) fails validation."""
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_payment_through_gateway(158.00, "JPY", "order-jpy-001")
+
+
+class TestProcessOrderPaymentFailurePath:
+    """Tests for payment processing failure scenarios."""
+
+    def test_jpy_order_raises_due_to_conversion_bug(self):
+        """JPY order triggers ValueError because the buggy conversion produces
+        a display amount below the 500 JPY threshold."""
+        event_data = OrderEventData(
+            order_id="order-jpy-001",
+            customer_id="cust-jpy",
+            currency="JPY",
+            amount=15800,
+            items=[
+                {"product_id": "p1", "name": "Bento Box", "quantity": 1, "unit_price": 15800}
+            ],
+        )
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_order_payment(event_data)
+
+    def test_gateway_failure_returns_failed_record(self):
+        """When the gateway returns success=False, the payment record should be FAILED."""
+        event_data = OrderEventData(
+            order_id="order-fail-001",
+            customer_id="cust-fail",
+            currency="USD",
+            amount=5000,
+            items=[
+                {"product_id": "p1", "name": "Widget", "quantity": 1, "unit_price": 5000}
+            ],
+        )
+        mock_response = GatewayResponse(
+            success=False,
+            error="Card declined",
+        )
+        with patch(
+            "app.processor.process_payment_through_gateway",
+            return_value=mock_response,
+        ):
+            payment = process_order_payment(event_data)
+
+        assert payment.status == PaymentStatus.FAILED
+        assert payment.error_message == "Card declined"
+        assert payment.order_id == "order-fail-001"
+        assert payment.amount_display == 50.00
