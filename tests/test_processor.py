@@ -37,6 +37,18 @@ class TestConvertToDisplayAmount:
         """JPY small amount should not be divided."""
         assert convert_to_display_amount(500, "JPY") == 500.0
 
+    def test_convert_bhd_amount(self):
+        """BHD is three-decimal: amount should be divided by 1000."""
+        assert convert_to_display_amount(15800, "BHD") == 15.8
+
+    def test_convert_kwd_amount(self):
+        """KWD is three-decimal: amount should be divided by 1000."""
+        assert convert_to_display_amount(5250, "KWD") == 5.25
+
+    def test_unknown_currency_defaults_to_two_decimals(self):
+        """Unknown currency should default to 2 decimal places."""
+        assert convert_to_display_amount(1999, "XYZ") == 19.99
+
     def test_convert_zero_amount(self):
         """Zero amount should convert to zero."""
         assert convert_to_display_amount(0, "USD") == 0.0
@@ -140,6 +152,9 @@ class TestValidatePaymentAmount:
     def test_jpy_below_threshold(self):
         with pytest.raises(ValueError):
             validate_payment_amount(100.0, "JPY")
+
+    def test_bhd_above_threshold(self):
+        validate_payment_amount(1.00, "BHD")
 
 
 class TestHealthEndpoints:

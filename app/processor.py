@@ -9,8 +9,23 @@ from dataclasses import dataclass
 
 from app.models import OrderEventData, PaymentRecord, PaymentStatus
 
-# Currencies where the smallest unit is the base unit (no decimal subdivision).
-ZERO_DECIMAL_CURRENCIES: set[str] = {"JPY", "KRW"}
+# ISO 4217 decimal places per currency.
+# 0 = zero-decimal (JPY, KRW), 2 = standard (USD, EUR), 3 = three-decimal (BHD, KWD, OMR).
+CURRENCY_DECIMAL_PLACES: dict[str, int] = {
+    "USD": 2,
+    "EUR": 2,
+    "GBP": 2,
+    "CHF": 2,
+    "CAD": 2,
+    "AUD": 2,
+    "CNY": 2,
+    "INR": 2,
+    "JPY": 0,
+    "KRW": 0,
+    "BHD": 3,
+    "KWD": 3,
+    "OMR": 3,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +64,8 @@ def convert_to_display_amount(amount_minor: int, currency: str) -> float:
     Returns:
         The amount in display format (e.g., dollars for USD, yen for JPY).
     """
-    if currency.upper() in ZERO_DECIMAL_CURRENCIES:
-        return float(amount_minor)
-    return amount_minor / 100
+    decimals = CURRENCY_DECIMAL_PLACES.get(currency.upper(), 2)
+    return amount_minor / (10 ** decimals)
 
 
 def validate_payment_amount(display_amount: float, currency: str) -> None:
@@ -129,7 +143,6 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
     )
 
     # Process through the payment gateway
-    # For JPY orders, the display_amount will be too low and validation will fail
     gateway_response = process_payment_through_gateway(
         display_amount=display_amount,
         currency=event_data.currency,
