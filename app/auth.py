@@ -1,10 +1,13 @@
 """User authentication and login activity logging."""
 
+import hmac
 import logging
+from collections import deque
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel, Field, SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -13,15 +16,17 @@ audit_logger = logging.getLogger("app.auth.audit")
 
 router = APIRouter(tags=["auth"])
 
-# In-memory store for login records (demo purposes)
-login_records: list["LoginRecord"] = []
+_MAX_LOGIN_RECORDS = 1000
+
+# In-memory store for login records (demo purposes) with bounded size
+login_records: deque["LoginRecord"] = deque(maxlen=_MAX_LOGIN_RECORDS)
 
 
 class LoginRequest(BaseModel):
     """Payload for user login."""
 
     username: str
-    password: str
+    password: SecretStr
 
 
 class LoginRecord(BaseModel):
@@ -87,23 +92,25 @@ def _record_login(
     return record
 
 
-@router.post("/auth/login", response_model=LoginResponse)
+@router.post("/auth/login", status_code=200)
 async def login(body: LoginRequest, request: Request) -> LoginResponse:
     """Authenticate a user and log the attempt details."""
-    if body.username not in _DEMO_USERS:
-        _record_login(body.username, request, success=False, failure_reason="unknown user")
-        return LoginResponse(
-            message="Login failed — unknown user",
-            username=body.username,
-            logged_in_at=datetime.now(UTC),
+    stored_password = _DEMO_USERS.get(body.username)
+    password_value = body.password.get_secret_value()
+
+    if stored_password is None:
+        hmac.compare_digest(password_value, "dummy")
+        _record_login(body.username, request, success=False, failure_reason="invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Login failed \u2014 invalid credentials",
         )
 
-    if _DEMO_USERS[body.username] != body.password:
-        _record_login(body.username, request, success=False, failure_reason="invalid password")
-        return LoginResponse(
-            message="Login failed — invalid password",
-            username=body.username,
-            logged_in_at=datetime.now(UTC),
+    if not hmac.compare_digest(password_value, stored_password):
+        _record_login(body.username, request, success=False, failure_reason="invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Login failed \u2014 invalid credentials",
         )
 
     record = _record_login(body.username, request, success=True)
@@ -114,8 +121,27 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
     )
 
 
-@router.get("/auth/login-records", response_model=list[LoginRecord])
+_security = HTTPBasic()
+
+
+def _verify_admin(credentials: HTTPBasicCredentials = Depends(_security)) -> None:
+    """Require valid admin credentials to access login records."""
+    correct_username = hmac.compare_digest(credentials.username, "admin")
+    correct_password = hmac.compare_digest(credentials.password, _DEMO_USERS["admin"])
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+@router.get(
+    "/auth/login-records",
+    response_model=list[LoginRecord],
+    dependencies=[Depends(_verify_admin)],
+)
 async def list_login_records(limit: int = 50) -> list[LoginRecord]:
-    """Return recent login records (most recent first)."""
+    """Return recent login records (most recent first). Requires admin authentication."""
     sorted_records = sorted(login_records, key=lambda r: r.timestamp, reverse=True)
     return sorted_records[:limit]
