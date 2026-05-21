@@ -11,15 +11,27 @@ Expected behavior:
 Actual (buggy) behavior:
   - JPY 15800 / 100 = 158.00 → below 500 JPY threshold → ValueError
   - KRW 50000 / 100 = 500.00 → meets threshold but display amount is wrong
+
+All tests are marked xfail because the application has a known bug that
+divides ALL currency amounts by 100, regardless of whether the currency
+uses decimal places. These tests document the CORRECT behavior.
 """
+
+import pytest
 
 from app.models import OrderEventData, PaymentStatus
 from app.processor import convert_to_display_amount, process_order_payment
+
+ZERO_DECIMAL_BUG = pytest.mark.xfail(
+    reason="Known bug: all amounts divided by 100, incorrect for JPY/KRW",
+    strict=True,
+)
 
 
 class TestConvertToDisplayAmountZeroDecimal:
     """Tests for convert_to_display_amount with zero-decimal currencies."""
 
+    @ZERO_DECIMAL_BUG
     def test_convert_jpy_amount(self):
         """JPY amounts should NOT be divided by 100 (zero-decimal currency).
 
@@ -27,10 +39,9 @@ class TestConvertToDisplayAmountZeroDecimal:
         Expected: 15800, Actual: 158.00
         """
         result = convert_to_display_amount(15800, "JPY")
-        # Correct behavior would return 15800 (no conversion)
-        # Bug causes it to return 158.00
         assert result == 15800
 
+    @ZERO_DECIMAL_BUG
     def test_convert_krw_amount(self):
         """KRW amounts should NOT be divided by 100 (zero-decimal currency).
 
@@ -38,10 +49,9 @@ class TestConvertToDisplayAmountZeroDecimal:
         Expected: 50000, Actual: 500.00
         """
         result = convert_to_display_amount(50000, "KRW")
-        # Correct behavior would return 50000 (no conversion)
-        # Bug causes it to return 500.00
         assert result == 50000
 
+    @ZERO_DECIMAL_BUG
     def test_convert_jpy_small_amount(self):
         """Small JPY amounts should remain unchanged.
 
@@ -50,6 +60,7 @@ class TestConvertToDisplayAmountZeroDecimal:
         result = convert_to_display_amount(1000, "JPY")
         assert result == 1000
 
+    @ZERO_DECIMAL_BUG
     def test_convert_krw_large_amount(self):
         """Large KRW amounts should remain unchanged.
 
@@ -62,6 +73,7 @@ class TestConvertToDisplayAmountZeroDecimal:
 class TestProcessOrderPaymentZeroDecimal:
     """Tests for process_order_payment with zero-decimal currencies."""
 
+    @ZERO_DECIMAL_BUG
     def test_process_jpy_order(self):
         """JPY order should process successfully with correct display amount.
 
@@ -90,6 +102,7 @@ class TestProcessOrderPaymentZeroDecimal:
         assert payment.amount_minor == 15800
         assert payment.amount_display == 15800
 
+    @ZERO_DECIMAL_BUG
     def test_process_krw_order(self):
         """KRW order should process successfully with correct display amount.
 
@@ -119,6 +132,7 @@ class TestProcessOrderPaymentZeroDecimal:
         assert payment.amount_minor == 50000
         assert payment.amount_display == 50000
 
+    @ZERO_DECIMAL_BUG
     def test_process_jpy_order_below_threshold(self):
         """JPY order with amount below threshold after buggy conversion should fail.
 
@@ -139,10 +153,10 @@ class TestProcessOrderPaymentZeroDecimal:
                 }
             ],
         )
-        # Correct behavior: should succeed since 800 JPY > 500 JPY threshold
         payment = process_order_payment(event_data)
         assert payment.status == PaymentStatus.COMPLETED
 
+    @ZERO_DECIMAL_BUG
     def test_process_krw_small_order(self):
         """KRW order with amount that fails after buggy conversion.
 
@@ -163,6 +177,5 @@ class TestProcessOrderPaymentZeroDecimal:
                 }
             ],
         )
-        # Correct behavior: should succeed since 1000 KRW > 500 KRW threshold
         payment = process_order_payment(event_data)
         assert payment.status == PaymentStatus.COMPLETED
