@@ -9,6 +9,7 @@ from azure.servicebus import ServiceBusClient
 from azure.servicebus.exceptions import ServiceBusError
 
 from app.config import settings
+from app.events import publish_payment_processed
 from app.models import OrderCreatedEvent, PaymentRecord
 from app.processor import process_order_payment
 
@@ -68,6 +69,14 @@ def _process_message(message_body: str) -> None:
             payment.order_id,
             payment.status.value,
         )
+
+        # Publish PaymentProcessed event for downstream consumers (e.g. reporting)
+        published = publish_payment_processed(payment)
+        if not published:
+            logger.warning(
+                "Payment event not published for payment %s",
+                payment.payment_id,
+            )
 
         # Callback to order service to update order status
         _update_order_status(event.data.order_id, payment.status.value)

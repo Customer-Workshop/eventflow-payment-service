@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # Azure Service Bus
     azure_servicebus_connection_string: str = ""
     azure_servicebus_queue_name: str = "order-events"
+    azure_servicebus_payment_queue_name: str = "payment-events"
 
     # Azure Monitor
     applicationinsights_connection_string: str = ""

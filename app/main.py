@@ -14,6 +14,7 @@ from app.consumer import (
     start_consumer,
     stop_consumer,
 )
+from app.events import close_payment_publisher
 from app.models import PaymentRecord
 
 # Configure structured logging
@@ -37,6 +38,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     yield
     logger.info("Shutting down %s", settings.service_name)
     stop_consumer()
+    close_payment_publisher()
 
 
 app = FastAPI(
