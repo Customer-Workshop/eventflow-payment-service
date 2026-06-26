@@ -96,6 +96,12 @@ def publish_payment_processed(payment: PaymentRecord) -> bool:
             extra={"payment_id": payment.payment_id},
         )
         return False
+    except Exception:
+        logger.exception(
+            "Unexpected error publishing payment event",
+            extra={"payment_id": payment.payment_id},
+        )
+        return False
 
 
 def close_payment_publisher() -> None:

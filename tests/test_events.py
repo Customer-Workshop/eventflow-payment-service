@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+from azure.servicebus.exceptions import ServiceBusError
+
 from app.events import publish_payment_processed
 from app.models import PaymentRecord, PaymentStatus
 
@@ -72,3 +74,31 @@ class TestPublishPaymentProcessed:
 
         assert result is True
         mock_sender.send_messages.assert_called_once()
+
+    @patch("app.events._get_servicebus_client")
+    def test_returns_false_on_servicebus_error(self, mock_get_client):
+        """Should catch ServiceBusError and return False."""
+        mock_client = MagicMock()
+        mock_sender = MagicMock()
+        mock_sender.__enter__ = MagicMock(return_value=mock_sender)
+        mock_sender.__exit__ = MagicMock(return_value=False)
+        mock_sender.send_messages.side_effect = ServiceBusError("connection lost")
+        mock_client.get_queue_sender.return_value = mock_sender
+        mock_get_client.return_value = mock_client
+
+        result = publish_payment_processed(_make_payment())
+        assert result is False
+
+    @patch("app.events._get_servicebus_client")
+    def test_returns_false_on_unexpected_exception(self, mock_get_client):
+        """Non-ServiceBusError exceptions must be caught to prevent duplicate payments."""
+        mock_client = MagicMock()
+        mock_sender = MagicMock()
+        mock_sender.__enter__ = MagicMock(return_value=mock_sender)
+        mock_sender.__exit__ = MagicMock(return_value=False)
+        mock_sender.send_messages.side_effect = OSError("network unreachable")
+        mock_client.get_queue_sender.return_value = mock_sender
+        mock_get_client.return_value = mock_client
+
+        result = publish_payment_processed(_make_payment())
+        assert result is False
