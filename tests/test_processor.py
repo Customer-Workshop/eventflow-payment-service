@@ -1,9 +1,6 @@
-"""Tests for the payment processor.
+"""Tests for the payment processor."""
 
-NOTE: These tests only cover USD and EUR currencies.
-The JPY/KRW zero-decimal currency bug is NOT covered by these tests,
-which is why it passes CI but fails in production.
-"""
+import pytest
 
 from app.models import OrderEventData, PaymentStatus
 from app.processor import convert_to_display_amount, process_order_payment
@@ -51,6 +48,89 @@ class TestProcessOrderPayment:
         assert payment.currency == "EUR"
         assert payment.amount_minor == 8999
         assert payment.amount_display == 89.99
+
+    def test_process_jpy_order(self):
+        """JPY order should preserve its zero-decimal yen amount."""
+        event_data = OrderEventData(
+            order_id="order-jpy-001",
+            customer_id="cust-jpy",
+            currency="JPY",
+            amount=15800,
+            items=[
+                {"product_id": "p-jpy", "name": "Japanese Item", "quantity": 1, "unit_price": 15800}
+            ],
+        )
+        payment = process_order_payment(event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.currency == "JPY"
+        assert payment.amount_minor == 15800
+        assert payment.amount_display == 15800.0
+
+    def test_process_krw_order(self):
+        """KRW order should preserve its zero-decimal won amount."""
+        event_data = OrderEventData(
+            order_id="order-krw-001",
+            customer_id="cust-krw",
+            currency="KRW",
+            amount=15800,
+            items=[
+                {
+                    "product_id": "p-krw",
+                    "name": "Korean Item",
+                    "quantity": 1,
+                    "unit_price": 15800,
+                }
+            ],
+        )
+        payment = process_order_payment(event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.currency == "KRW"
+        assert payment.amount_minor == 15800
+        assert payment.amount_display == 15800.0
+
+    def test_jpy_below_minimum_threshold_fails(self):
+        """JPY amounts below the minimum threshold should fail."""
+        event_data = OrderEventData(
+            order_id="order-jpy-below-threshold",
+            customer_id="cust-jpy",
+            currency="JPY",
+            amount=499,
+            items=[
+                {
+                    "product_id": "p-jpy",
+                    "name": "Japanese Item",
+                    "quantity": 1,
+                    "unit_price": 499,
+                }
+            ],
+        )
+
+        with pytest.raises(ValueError, match="below minimum threshold"):
+            process_order_payment(event_data)
+
+    def test_jpy_minimum_threshold_succeeds(self):
+        """JPY amounts at the minimum threshold should succeed."""
+        event_data = OrderEventData(
+            order_id="order-jpy-at-threshold",
+            customer_id="cust-jpy",
+            currency="JPY",
+            amount=500,
+            items=[
+                {
+                    "product_id": "p-jpy",
+                    "name": "Japanese Item",
+                    "quantity": 1,
+                    "unit_price": 500,
+                }
+            ],
+        )
+        payment = process_order_payment(event_data)
+
+        assert payment.status == PaymentStatus.COMPLETED
+        assert payment.amount_minor == 500
+        assert payment.amount_display == 500.0
 
     def test_process_large_usd_order(self):
         """Large USD orders should process without issues."""
