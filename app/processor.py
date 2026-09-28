@@ -20,6 +20,7 @@ When a JPY order with amount=15800 arrives:
 import logging
 from dataclasses import dataclass
 
+from app.fees import PROCESSING_FEE_BPS, processing_fee
 from app.models import OrderEventData, PaymentRecord, PaymentStatus
 
 logger = logging.getLogger(__name__)
@@ -153,10 +154,13 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
     )
 
     if gateway_response.success:
+        fee = processing_fee(display_amount)
         logger.info(
-            "Payment completed for order %s (txn: %s)",
+            "Payment completed for order %s (txn: %s, fee: %s %s)",
             event_data.order_id,
             gateway_response.transaction_id,
+            fee,
+            event_data.currency,
         )
         return PaymentRecord(
             order_id=event_data.order_id,
@@ -164,6 +168,8 @@ def process_order_payment(event_data: OrderEventData) -> PaymentRecord:
             currency=event_data.currency,
             amount_minor=event_data.amount,
             amount_display=display_amount,
+            processing_fee=fee,
+            processing_fee_bps=int(PROCESSING_FEE_BPS),
             status=PaymentStatus.COMPLETED,
         )
 

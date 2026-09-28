@@ -1,0 +1,38 @@
+{
+  "repo_notes": [
+    {
+      "content": "eventflow-payment-service is System 2 of the EventFlow demo and a consumer of the shared demo-ledger-service library (same GitHub organisation), pinned to a Git tag in pyproject.toml. It uses ledger.fees.management_fee to attach a processing-fee line to every completed payment. The sibling eventflow-order-service consumes the same library for settlement dates. The zero-decimal currency (JPY/KRW) conversion bug in app/processor.py is an intentional demo narrative; do not describe it as fixed unless the code changes."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "What the Payment Service does: consumes OrderCreated events from Azure Service Bus, converts minor-unit amounts to display amounts, validates them against per-currency minimum thresholds, simulates a gateway call, records a PaymentRecord (with processing fee) and calls back to the Order Service to update order status. Include the architecture diagram from the README.",
+      "page_notes": [{ "content": "" }]
+    },
+    {
+      "title": "Payment Processing Pipeline",
+      "purpose": "app/processor.py end to end: convert_to_display_amount, validate_payment_amount, process_payment_through_gateway, process_order_payment; the PaymentRecord model; and the documented zero-decimal currency bug used in the demo narrative.",
+      "parent": "Overview",
+      "page_notes": [{ "content": "" }]
+    },
+    {
+      "title": "Processing Fee via demo-ledger-service",
+      "purpose": "How app/fees.py wraps ledger.fees.management_fee (25 bps, Decimal, rounded to the cent), where the fee appears on PaymentRecord, how the dependency is pinned (git + tag in pyproject.toml), how to upgrade the pin, why Dockerfile installs git, and where the library's accounting conventions are documented.",
+      "parent": "Overview",
+      "page_notes": [{ "content": "" }]
+    },
+    {
+      "title": "Service Bus Consumer and Configuration",
+      "purpose": "app/consumer.py background thread, message handling and error paths, the order-status callback, app/config.py settings and environment variables.",
+      "parent": "Overview",
+      "page_notes": [{ "content": "" }]
+    },
+    {
+      "title": "Development, Testing and CI/CD",
+      "purpose": "Poetry setup, running locally, pytest and ruff, the GitHub Actions ci.yml (test + docker build) and cd.yml (Azure Container Apps deploy).",
+      "parent": "Overview",
+      "page_notes": [{ "content": "" }]
+    }
+  ]
+}

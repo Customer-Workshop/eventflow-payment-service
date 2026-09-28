@@ -20,6 +20,7 @@ Azure Service Bus → [Payment Service] → Payment Processing
 
 - Azure Service Bus consumer for `OrderCreated` events
 - Payment processing with currency conversion
+- Processing fee line (25 bps, rounded to the cent) on every completed payment via the shared `demo-ledger-service` library
 - Health check and readiness endpoints
 - Structured logging with correlation IDs
 - OpenTelemetry instrumentation for Azure Monitor
@@ -45,6 +46,7 @@ This bug is intentionally present on the `main` branch to demonstrate:
 - Azure Service Bus SDK
 - OpenTelemetry + Azure Monitor
 - Pydantic v2
+- [`demo-ledger-service`](https://github.com/Cognition-Partner-Workshops/demo-ledger-service) (`ledger.fees`), pinned to a Git tag in `pyproject.toml`
 
 ## Local Development
 
@@ -80,6 +82,26 @@ poetry run pytest -v
 | `GET` | `/ready` | Readiness check |
 | `GET` | `/api/payments` | List processed payments |
 | `GET` | `/api/payments/{payment_id}` | Get payment by ID |
+
+## Processing fee
+
+Completed payments carry `processing_fee` and `processing_fee_bps` in the
+`PaymentRecord` returned by `/api/payments`. The fee is
+`ledger.fees.management_fee(Decimal(amount_display), 25 bps)` from
+`demo-ledger-service`, so it is a `Decimal` rounded to the cent and serialises
+as a string in JSON (for example `"0.27"` on a `109.97` USD payment).
+
+## Shared library dependency
+
+`demo-ledger-service` is installed straight from GitHub at a pinned tag (no
+package registry):
+
+```toml
+demo-ledger-service = { git = "https://github.com/Cognition-Partner-Workshops/demo-ledger-service.git", tag = "v0.4.0" }
+```
+
+To pick up a new library release, bump the `tag` and run `poetry lock`. The
+Docker image installs `git` in the builder stage so Poetry can fetch it.
 
 ## Docker
 

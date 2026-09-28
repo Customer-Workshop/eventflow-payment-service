@@ -2,7 +2,9 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir poetry==1.7.1 && \
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir poetry==1.7.1 && \
     poetry config virtualenvs.create false
 
 COPY pyproject.toml ./
