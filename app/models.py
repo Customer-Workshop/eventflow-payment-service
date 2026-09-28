@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -52,6 +53,11 @@ class PaymentRecord(BaseModel):
     currency: str
     amount_minor: int = Field(description="Amount in smallest currency unit")
     amount_display: float = Field(description="Amount in display format")
+    processing_fee: Decimal | None = Field(
+        default=None,
+        description="Processing fee in display currency units (25 bps), set on completed payments",
+    )
+    processing_fee_bps: int = Field(default=25, description="Processing fee rate in basis points")
     status: PaymentStatus = PaymentStatus.PENDING
     processed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     error_message: str | None = None
