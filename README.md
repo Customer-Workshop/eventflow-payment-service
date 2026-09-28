@@ -100,8 +100,10 @@ package registry):
 demo-ledger-service = { git = "https://github.com/Cognition-Partner-Workshops/demo-ledger-service.git", tag = "v0.4.0" }
 ```
 
-To pick up a new library release, bump the `tag` and run `poetry lock`. The
-Docker image installs `git` in the builder stage so Poetry can fetch it.
+To pick up a new library release, bump the `tag`, run `poetry lock` (Poetry
+1.7.1, matching CI and the Dockerfile) and commit the updated `poetry.lock`.
+CI fails if `poetry.lock` is out of date with `pyproject.toml`. The Docker
+image installs `git` in the builder stage so Poetry can fetch it.
 
 ## Docker
 

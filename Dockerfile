@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     pip install --no-cache-dir poetry==1.7.1 && \
     poetry config virtualenvs.create false
 
-COPY pyproject.toml ./
+COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-dev --no-interaction --no-ansi
 
 FROM python:3.11-slim

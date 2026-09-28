@@ -29,9 +29,6 @@ htmlcov/
 .coverage
 coverage.xml
 
-# Poetry
-poetry.lock
-
 # Docker
 .docker/
 
